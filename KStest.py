@@ -6,6 +6,7 @@ Created on Tue Nov  7 19:43:03 2017
 @author: wellenbu
 """
 
+import math
 import datetime
 import ee
 import sys
@@ -37,7 +38,22 @@ def lsCloudMask(img):
   scored = ee.Algorithms.Landsat.simpleCloudScore(img)
   clouds = blank.where(scored.select(['cloud']).lte(cloudThresh),1)
   return img.updateMask(clouds).set("system:time_start",img.get("system:time_start"))
-  
+''' 
+def viirsQuality(img):
+    def getQABits(image, start, end, newName):
+        # Compute the bits we need to extract.
+        pattern = 0;
+        for i in range(start,end+1):
+           pattern += math.pow(2, i);
+        
+        return image.select([0], [newName])\
+                      .bitwiseAnd(int(pattern))\
+                      .rightShift(start)
+                      
+    qf = img.select('QF1')
+    quality = getQABits(qf,0,3,'quality')
+    return img.updateMask(quality.eq(3))
+'''  
 # A helper to apply an expression and linearly rescale the output 
 def rescale(img, exp, thresholds):
   return img.expression(exp, {'img': img})\
@@ -72,6 +88,12 @@ def s2CloudMask(img):
   
   
 def mergeOptical(studyArea,t1,t2):
+    #viirsrename = viirs.filterBounds(studyArea)\
+                    #.filterDate(t1,t2)\
+                    #.select(['M5','M5','M5','M7','M5','M5'],['blue','green','red','nir','swir1','swir2'])
+
+                    #.map(viirsQuality)
+           
     le7rename = le7.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
                     .filterMetadata('CLOUD_COVER','less_than',metadataCloudCoverMax)\
@@ -92,7 +114,7 @@ def mergeOptical(studyArea,t1,t2):
                             ['blue','green','red','nir','swir1','swir2'])\
                     .map(bandPassAdjustment)
                     
-    out = ee.ImageCollection(le7rename.merge(lc8rename).merge(st2rename))
+    out = ee.ImageCollection(le7rename.merge(lc8rename).merge(st2rename))#.merge(viirsrename))
     
     return out
 
@@ -175,30 +197,27 @@ def smooth(x,window_len= 11,window='hanning'):
 
 
     
-'''
+
 def simpleTDOM2(collection,zScoreThresh,shadowSumThresh,dilatePixels):
+    def bustShadows(img):
+        zScore = img.select(shadowSumBands).subtract(irMean).divide(irStdDev);
+        irSum = img.select(shadowSumBands).reduce(ee.Reducer.sum());
+        TDOMMask = zScore.lt(zScoreThresh).reduce(ee.Reducer.sum()).eq(2)\
+            .And(irSum.lt(shadowSumThresh)).Not();
+        TDOMMask = TDOMMask.focal_min(dilatePixels);
+        return img.addBands(TDOMMask.rename(['TDOMMask']))
+    
     shadowSumBands = ['nir','swir1']
     #Get some pixel-wise stats for the time series
     irStdDev = collection.select(shadowSumBands).reduce(ee.Reducer.stdDev())
     irMean = collection.select(shadowSumBands).mean()
-    def function(img):
-        zScore = img.select(shadowSumBands).subtract(irMean).divide(irStdDev)
-        irSum = img.select(shadowSumBands).reduce(ee.Reducer.sum())
-        TDOMMask = zScore.lt(zScoreThresh).reduce(ee.Reducer.sum()).eq(2).And(irSum.lt(shadowSumThresh)).Not()
-        TDOMMask = TDOMMask.focal_min(dilatePixels)
-        return img.addBands(TDOMMask.rename('TDOMMask'))
-    collection = collection.map(function(img))
+
+    collection = collection.map(bustShadows)
     #Mask out dark dark outliers
     
-    collection = collection.map(function(img){
-    var zScore = img.select(shadowSumBands).subtract(irMean).divide(irStdDev);
-    var irSum = img.select(shadowSumBands).reduce(ee.Reducer.sum());
-    var TDOMMask = zScore.lt(zScoreThresh).reduce(ee.Reducer.sum()).eq(2)
-        .and(irSum.lt(shadowSumThresh)).not();
-    TDOMMask = TDOMMask.focal_min(dilatePixels);
-    return img.addBands(TDOMMask.rename('TDOMMask'))
     return collection
-'''  
+
+    
 iniDate = '2010-01-01'
 endDate = '2016-12-31'
 
@@ -213,13 +232,27 @@ windowSize = 15
 geo1 = ee.Geometry.Point([-93.61124038696289,42.162003755958466])
 geo2 = ee.Geometry.Point([-93.49742889404297,42.145078043817534])
 
+viirs = ee.ImageCollection('NOAA/VIIRS/VNP09GA/001')
 lc8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_RT_TOA')
 le7 = ee.ImageCollection('LANDSAT/LE07/C01/T1_RT_TOA')
 s2 = ee.ImageCollection('COPERNICUS/S2')
+s1 = ee.ImageCollection('COPERNICUS/S1_GRD')
 
 optical = mergeOptical(geo1, iniDate, endDate)
+#mwvVi = microwv(geo,iniDate, endDate).select(sarBand)
+
+'''
+def microwv(geo,start,end):
+    sar = s1.filterBounds(geo).filterDate(start,end)\
+              .filterMetadata('transmitterReceiverPolarisation','equals',['VV','VH'])\
+              .filterMetadata('orbitProperties_pass','equals','DESCENDING').select(['VV','angle'])\
+              .map(despeckle).map(normalizeBackscatter).map(calcVVVHBand)
+    return sar
+'''
+
 #sys.exit()
-#optical = simpleTDOM2(optical,zScoreThresh,shadowSumThresh,dilatePixels);
+optical = simpleTDOM2(optical,zScoreThresh,shadowSumThresh,dilatePixels);
+#sys.exit(1)
 
     
 raw = lc8.filterDate('2015-01-01', '2015-10-30')#.filterBounds(geometry)
@@ -254,17 +287,23 @@ for geo in [geo1, geo2]:
     df.time = df.time / 1000
     df['time'] = pd.to_datetime(df['time'], unit = 's')
     df.rename(columns = {'time': 'date'}, inplace = True)
-    df.sort_values(by = 'date')
-    
+    df = df.sort_values(by = 'date')
+    #sys.exit()
     df.index = df['date']
-    df['interp'] = df['nd'].interpolate('nearest')
 
-
-    sys.exit()
+    df['date_'+str(i)] = df['date']
+    del df['date']
+    df['nd_'+str(i)] = df['nd']
+    del df['nd']
+    #sys.exit()  
+    df['interp_'+str(i)] = df['nd_'+str(i)].interpolate('nearest')
+    df['smooth_'+str(i)] = smooth(df['interp_'+str(i)], window_len=6)[2:-3]
     
-    nd['date_'+str(i)] = df['date']
-    nd['nd_'+str(i)] = df['nd']
-    
+    if i == 0:
+        nd = df
+    else:
+        nd = pd.concat([nd,df],axis=1)
+       
     i += 1
 
     
@@ -273,7 +312,7 @@ for geo in [geo1, geo2]:
 #statsmodels.tsa.stattools.grangercausalitytests(nd[['nd_0','nd_1']], 5, addconst=True, verbose=True)
 
 #filled in nans 
-ndfill = nd.fillna(method='ffill')
+# = nd.fillna(method='ffill')
 
 
 
