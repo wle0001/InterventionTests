@@ -32,28 +32,29 @@ def addNDVI2(image):
     #ndvi = image.normalizedDifference(['nir', 'red'])
     #return image.addBands(ndvi)
     return ndvi.set("system:time_start",image.get("system:time_start"))
+
+# A helper function to extract values from QA bits
+def getQABits(image, start, end, newName):
+    # Compute the bits we need to extract.
+    pattern = 0;
+    for i in range(start,end+1):
+       pattern += math.pow(2, i);
     
+    return image.select([0], [newName])\
+                  .bitwiseAnd(int(pattern))\
+                  .rightShift(start)
+
 def lsCloudMask(img):
   blank = ee.Image(0)
   scored = ee.Algorithms.Landsat.simpleCloudScore(img)
   clouds = blank.where(scored.select(['cloud']).lte(cloudThresh),1)
   return img.updateMask(clouds).set("system:time_start",img.get("system:time_start"))
-''' 
-def viirsQuality(img):
-    def getQABits(image, start, end, newName):
-        # Compute the bits we need to extract.
-        pattern = 0;
-        for i in range(start,end+1):
-           pattern += math.pow(2, i);
-        
-        return image.select([0], [newName])\
-                      .bitwiseAnd(int(pattern))\
-                      .rightShift(start)
-                      
+ 
+def viirsQuality(img):                      
     qf = img.select('QF1')
     quality = getQABits(qf,0,3,'quality')
-    return img.updateMask(quality.eq(3))
-'''  
+    return img.updateMask(quality.gte(3))
+
 # A helper to apply an expression and linearly rescale the output 
 def rescale(img, exp, thresholds):
   return img.expression(exp, {'img': img})\
@@ -88,11 +89,10 @@ def s2CloudMask(img):
   
   
 def mergeOptical(studyArea,t1,t2):
-    #viirsrename = viirs.filterBounds(studyArea)\
-                    #.filterDate(t1,t2)\
-                    #.select(['M5','M5','M5','M7','M5','M5'],['blue','green','red','nir','swir1','swir2'])
-
-                    #.map(viirsQuality)
+    viirsrename = viirs.filterBounds(studyArea)\
+                    .filterDate(t1,t2)\
+                    .select(['M5','M5','M5','M7','M5','M5'],['blue','green','red','nir','swir1','swir2'])\
+                    .map(viirsQuality)
            
     le7rename = le7.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
@@ -114,7 +114,7 @@ def mergeOptical(studyArea,t1,t2):
                             ['blue','green','red','nir','swir1','swir2'])\
                     .map(bandPassAdjustment)
                     
-    out = ee.ImageCollection(le7rename.merge(lc8rename).merge(st2rename))#.merge(viirsrename))
+    out = ee.ImageCollection(le7rename.merge(lc8rename).merge(st2rename).merge(viirsrename))
     
     return out
 
@@ -171,18 +171,17 @@ def smooth(x,window_len= 11,window='hanning'):
     """
 
     if x.ndim != 1:
-        raise ValueError, "smooth only accepts 1 dimension arrays."
+        raise ValueError("smooth only accepts 1 dimension arrays.")
 
     if x.size < window_len:
-        raise ValueError, "Input vector needs to be bigger than window size."
-
+        raise ValueError( "Input vector needs to be bigger than window size.")
 
     if window_len<3:
         return x
 
 
     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
-        raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+        raise ValueError("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
 
 
     s=numpy.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
