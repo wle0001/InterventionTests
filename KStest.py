@@ -43,6 +43,15 @@ def getQABits(image, start, end, newName):
     return image.select([0], [newName])\
                   .bitwiseAnd(int(pattern))\
                   .rightShift(start)
+                  
+def smoothViirs(collection):
+    def smoother(img):
+        date = ee.Date(img.get('system:time_start'))
+        imgs = collection.filterDate(date.advance(-window,'day'),date.advance(window,'day'))
+        return imgs.median().set('system:time_start',date.millis())
+    window = 8
+    smoothed = collection.map(smoother)
+    return smoothed
 
 def lsCloudMask(img):
   blank = ee.Image(0)
@@ -89,10 +98,10 @@ def s2CloudMask(img):
 
 
 def mergeOptical(studyArea,t1,t2):
-    viirsrename = viirs.filterBounds(studyArea)\
+    viirsrename = smoothViirs(viirs.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
                     .map(viirsQuality)\
-                    .select(['M5','M5','M5','M7','M5','M5'],['blue','green','red','nir','swir1','swir2'])
+                    .select(['M5','M5','M5','M7','M5','M5'],['blue','green','red','nir','swir1','swir2']))
 
     le7rename = le7.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
