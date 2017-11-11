@@ -84,7 +84,7 @@ def s2CloudMask(img):
   score = score.min(rescale(img, 'img.B8 + img.B11 + img.B12', [2000, 8000]))
 
   #However, clouds are not snow.
-  ndsi = img.normalizedDifference(['B3', 'B11'])
+  ndsi = img.normalizedDifference(['B3', 'B11'])    
   score =  score.min(rescale(ndsi, 'img', [0.8, 0.6]))
 
   #Cirrus masking350
@@ -101,7 +101,7 @@ def mergeOptical(studyArea,t1,t2):
     viirsrename = smoothViirs(viirs.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
                     .map(viirsQuality)\
-                    .select(['M5','M5','I1','I2','M5','M5'],
+                    .select(['M3','M4','I1','I2','M10','M11'],
                             ['blue','green','red','nir','swir1','swir2']))
 
     le7rename = le7.filterBounds(studyArea)\
