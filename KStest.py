@@ -49,7 +49,7 @@ def smoothViirs(collection):
         date = ee.Date(img.get('system:time_start'))
         imgs = collection.filterDate(date.advance(-window,'day'),date.advance(window,'day'))
         return imgs.median().set('system:time_start',date.millis())
-    window = 8
+    window = 16
     smoothed = collection.map(smoother)
     return smoothed
 
@@ -101,7 +101,8 @@ def mergeOptical(studyArea,t1,t2):
     viirsrename = smoothViirs(viirs.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
                     .map(viirsQuality)\
-                    .select(['M5','M5','M5','M7','M5','M5'],['blue','green','red','nir','swir1','swir2']))
+                    .select(['M5','M5','I1','I2','M5','M5'],
+                            ['blue','green','red','nir','swir1','swir2']))
 
     le7rename = le7.filterBounds(studyArea)\
                     .filterDate(t1,t2)\
