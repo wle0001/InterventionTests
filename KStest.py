@@ -49,7 +49,7 @@ def smoothViirs(collection):
         date = ee.Date(img.get('system:time_start'))
         imgs = collection.filterDate(date.advance(-window,'day'),date.advance(window,'day'))
         return imgs.median().set('system:time_start',date.millis())
-    window = 16
+    window = 8
     smoothed = collection.map(smoother)
     return smoothed
 
