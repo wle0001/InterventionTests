@@ -435,7 +435,7 @@ nd = pd.DataFrame()
 
 i = 0
 for row in geoms.loc[geoms[cols[col]] == 1][['Lat','Lon']].iterrows():
-#for geo in [geo1, geo2]:
+#for geo in [geo1]:
     
     geo = ee.Geometry.Point([row[1]['Lon'],row[1]['Lat']])
     
@@ -500,15 +500,19 @@ for row in geoms.loc[geoms[cols[col]] == 1][['Lat','Lon']].iterrows():
     c = pd.DataFrame(signal.detrend(df2['nd'].dropna()), index = df2['nd'].dropna().index)
     
     mo = pd.concat([a.iloc[:,0],c.iloc[:,0]],1).groupby(pd.TimeGrouper(freq='M')).mean().dropna()
-    
-    #mo = pd.concat([df1['nd'],df2['nd']],1).groupby(pd.TimeGrouper(freq='M')).mean().dropna()
-
-    #sys.exit()
+    plt.scatter(mo.iloc[:,0],mo.iloc[:,1])
     m,b,r,p,e = linregress(mo.iloc[:,1].values,mo.iloc[:,0].values)
-    
-    #newmo = 
-   
     print r**2
+    #sys.exit()
+    
+    mo = pd.concat([df1['nd'],df2['nd']],1).groupby(pd.TimeGrouper(freq='M')).mean().dropna()
+    plt.scatter(mo.iloc[:,0],mo.iloc[:,1], color = 'red')
+    
+    plt.plot([-0.5,1],[-0.5,1],'r--')
+    m,b,r,p,e = linregress(mo.iloc[:,1].values,mo.iloc[:,0].values)
+    print r**2
+    print '\n'
+    #sys.exit()
     
     #df.iloc[:,1]*m+b
     #sys.exit()
